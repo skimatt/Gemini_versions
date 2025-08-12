@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulator Gravitasi Bola Memantul</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Menggunakan font Inter dari Google Fonts */
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+        }
+        /* Custom styling untuk slider agar terlihat lebih modern */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #4a5568; /* bg-gray-700 */
+            border-radius: 5px;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+        }
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #4299e1; /* bg-blue-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #1a202c; /* bg-gray-900 */
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #4299e1; /* bg-blue-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #1a202c; /* bg-gray-900 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 flex flex-col md:flex-row h-screen overflow-hidden">
+
+    <!-- Kontainer Utama Simulasi -->
+    <main class="flex-grow h-full p-4 flex flex-col">
+        <h1 class="text-2xl font-bold mb-4 text-center md:text-left">Bouncing Ball — Simulator Gravitasi</h1>
+        <div class="relative flex-grow rounded-lg overflow-hidden bg-gray-800 shadow-2xl" id="canvas-container">
+            <canvas id="simulationCanvas"></canvas>
+        </div>
+        <!-- Status Bar -->
+        <div class="mt-4 flex justify-between items-center text-sm bg-gray-800 p-2 rounded-lg">
+            <p><strong>Tip:</strong> Klik di dalam area simulasi untuk menambah bola.</p>
+            <div class="flex space-x-4">
+                <span id="ball-count">Jumlah Bola: 0</span>
+                <span id="fps-display">FPS: 60</span>
+            </div>
+        </div>
+    </main>
+
+    <!-- Panel Kontrol -->
+    <aside class="w-full md:w-80 bg-gray-800 p-6 overflow-y-auto shadow-lg">
+        <h2 class="text-xl font-bold mb-6 border-b border-gray-600 pb-2">Kontrol Parameter</h2>
+        
+        <!-- Kontrol Gravitasi -->
+        <div class="mb-4">
+            <label for="gravity" class="block mb-2 text-sm font-medium">Gravitasi (m/s²): <span id="gravity-value">0.3</span></label>
+            <input type="range" id="gravity" min="0" max="2" step="0.01" value="0.3" class="w-full">
+        </div>
+
+        <!-- Kontrol Elastisitas -->
+        <div class="mb-4">
+            <label for="elasticity" class="block mb-2 text-sm font-medium">Elastisitas (Koef. Pantulan): <span id="elasticity-value">0.85</span></label>
+            <input type="range" id="elasticity" min="0.1" max="1" step="0.01" value="0.85" class="w-full">
+        </div>
+
+        <!-- Kontrol Perlawanan Udara -->
+        <div class="mb-4">
+            <label for="air-drag" class="block mb-2 text-sm font-medium">Perlawanan Udara (Drag): <span id="air-drag-value">0.002</span></label>
+            <input type="range" id="air-drag" min="0" max="0.01" step="0.001" value="0.002" class="w-full">
+        </div>
+
+        <!-- Kontrol Radius Bola -->
+        <div class="mb-4">
+            <label for="radius" class="block mb-2 text-sm font-medium">Radius Bola (px): <span id="radius-value">15</span></label>
+            <input type="range" id="radius" min="5" max="50" step="1" value="15" class="w-full">
+        </div>
+        
+        <div class="border-t border-gray-600 my-6"></div>
+
+        <h3 class="text-lg font-bold mb-4">Kontrol Simulasi</h3>
+        <div class="grid grid-cols-2 gap-4">
+            <button id="spawn-ball" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Tambah Bola</button>
+            <button id="pause-resume" class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-4 rounded-lg transition-colors">Pause</button>
+            <button id="reset-sim" class="col-span-2 w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Reset</button>
+        </div>
+    </aside>
+
+    <script>
+        // ===================================================================================
+        // Inisialisasi Elemen dan Variabel Global
+        // ===================================================================================
+        const canvas = document.getElementById('simulationCanvas');
+        const ctx = canvas.getContext('2d');
+        const canvasContainer = document.getElementById('canvas-container');
+
+        // Elemen UI
+        const controls = {
+            gravity: document.getElementById('gravity'),
+            elasticity: document.getElementById('elasticity'),
+            airDrag: document.getElementById('air-drag'),
+            radius: document.getElementById('radius'),
+        };
+        const values = {
+            gravity: document.getElementById('gravity-value'),
+            elasticity: document.getElementById('elasticity-value'),
+            airDrag: document.getElementById('air-drag-value'),
+            radius: document.getElementById('radius-value'),
+        };
+        const buttons = {
+            spawn: document.getElementById('spawn-ball'),
+            pause: document.getElementById('pause-resume'),
+            reset: document.getElementById('reset-sim'),
+        };
+        const displays = {
+            ballCount: document.getElementById('ball-count'),
+            fps: document.getElementById('fps-display'),
+        };
+
+        // Variabel Simulasi
+        let balls = [];
+        let animationFrameId;
+        let isPaused = false;
+        let lastTime = 0;
+        let frameCount = 0;
+        let fps = 0;
+
+        // ===================================================================================
+        // Kelas (Class) untuk Bola
+        // Menggunakan pendekatan Object-Oriented untuk merepresentasikan setiap bola.
+        // Ini membuat kode lebih bersih, modular, dan mudah dikelola.
+        // ===================================================================================
+        class Ball {
+            constructor(x, y, radius, color, vx = 0, vy = 0) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                this.vx = vx; // Kecepatan horizontal
+                this.vy = vy; // Kecepatan vertikal
+            }
+
+            draw() {
+                ctx.beginPath();
+                // Membuat efek gradien agar bola terlihat 3D
+                const gradient = ctx.createRadialGradient(
+                    this.x - this.radius * 0.3, 
+                    this.y - this.radius * 0.3, 
+                    this.radius * 0.1, 
+                    this.x, 
+                    this.y, 
+                    this.radius
+                );
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+                gradient.addColorStop(0.7, this.color);
+                gradient.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+                
+                ctx.fillStyle = gradient;
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.closePath();
+            }
+
+            update(gravity, elasticity, airDrag) {
+                // Terapkan gravitasi
+                this.vy += gravity;
+
+                // Terapkan perlawanan udara (air drag)
+                this.vx *= (1 - airDrag);
+                this.vy *= (1 - airDrag);
+
+                // Deteksi tabrakan dengan lantai
+                if (this.y + this.vy + this.radius > canvas.height) {
+                    this.y = canvas.height - this.radius;
+                    this.vy = -this.vy * elasticity;
+                    // Mengurangi kecepatan horizontal saat memantul (efek gesekan)
+                    if (Math.abs(this.vx) > 0.1) this.vx *= 0.98; 
+                }
+
+                // Deteksi tabrakan dengan dinding
+                if (this.x + this.vx + this.radius > canvas.width || this.x + this.vx - this.radius < 0) {
+                    this.vx = -this.vx * elasticity;
+                    // Pastikan bola tidak keluar dari batas
+                    if (this.x + this.radius > canvas.width) this.x = canvas.width - this.radius;
+                    if (this.x - this.radius < 0) this.x = this.radius;
+                }
+                
+                // Deteksi tabrakan dengan langit-langit
+                if (this.y + this.vy - this.radius < 0) {
+                    this.y = this.radius;
+                    this.vy = -this.vy * elasticity;
+                }
+
+
+                // Update posisi
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+        }
+
+        // ===================================================================================
+        // Fungsi Utama Simulasi
+        // ===================================================================================
+        function resizeCanvas() {
+            canvas.width = canvasContainer.clientWidth;
+            canvas.height = canvasContainer.clientHeight;
+        }
+
+        function spawnBall(x, y) {
+            const radius = parseFloat(controls.radius.value);
+            // Memberi warna acak yang cerah
+            const hue = Math.random() * 360;
+            const color = `hsl(${hue}, 80%, 60%)`;
+            const vx = (Math.random() - 0.5) * 10; // Kecepatan awal acak
+            const vy = (Math.random() - 0.5) * 10;
+            balls.push(new Ball(x, y, radius, color, vx, vy));
+            updateBallCount();
+        }
+
+        function updateBallCount() {
+            displays.ballCount.textContent = `Jumlah Bola: ${balls.length}`;
+        }
+        
+        function updateFPS(timestamp) {
+            frameCount++;
+            if (timestamp - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = timestamp;
+                displays.fps.textContent = `FPS: ${fps}`;
+            }
+        }
+
+        function gameLoop(timestamp) {
+            if (isPaused) {
+                animationFrameId = requestAnimationFrame(gameLoop);
+                return;
+            }
+            
+            updateFPS(timestamp);
+
+            // Mengambil nilai parameter terbaru dari UI
+            const gravity = parseFloat(controls.gravity.value);
+            const elasticity = parseFloat(controls.elasticity.value);
+            const airDrag = parseFloat(controls.airDrag.value);
+
+            // Membersihkan canvas sebelum menggambar frame baru
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Update dan gambar setiap bola
+            balls.forEach(ball => {
+                ball.update(gravity, elasticity, airDrag);
+                ball.draw();
+            });
+
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // ===================================================================================
+        // Event Listeners untuk Interaktivitas
+        // ===================================================================================
+        function setupEventListeners() {
+            // Menyesuaikan ukuran canvas saat ukuran window berubah
+            window.addEventListener('resize', resizeCanvas);
+
+            // Update nilai tampilan saat slider digerakkan
+            Object.keys(controls).forEach(key => {
+                controls[key].addEventListener('input', (e) => {
+                    values[key].textContent = e.target.value;
+                });
+            });
+
+            // Tombol untuk menambah bola
+            buttons.spawn.addEventListener('click', () => {
+                spawnBall(Math.random() * canvas.width, Math.random() * canvas.height / 2);
+            });
+
+            // Tambah bola saat canvas diklik
+            canvas.addEventListener('click', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                spawnBall(x, y);
+            });
+
+            // Tombol Pause/Resume
+            buttons.pause.addEventListener('click', () => {
+                isPaused = !isPaused;
+                buttons.pause.textContent = isPaused ? 'Resume' : 'Pause';
+                buttons.pause.classList.toggle('bg-yellow-500');
+                buttons.pause.classList.toggle('bg-green-500');
+                buttons.pause.classList.toggle('hover:bg-yellow-600');
+                buttons.pause.classList.toggle('hover:bg-green-600');
+            });
+
+            // Tombol Reset
+            buttons.reset.addEventListener('click', () => {
+                balls = [];
+                updateBallCount();
+                if (isPaused) {
+                    isPaused = false;
+                    buttons.pause.textContent = 'Pause';
+                    buttons.pause.classList.remove('bg-green-500', 'hover:bg-green-600');
+                    buttons.pause.classList.add('bg-yellow-500', 'hover:bg-yellow-600');
+                }
+            });
+        }
+        
+        // ===================================================================================
+        // Fungsi Inisialisasi Utama
+        // ===================================================================================
+        function init() {
+            resizeCanvas();
+            setupEventListeners();
+            
+            // Membuat beberapa bola awal untuk demonstrasi
+            for (let i = 0; i < 5; i++) {
+                spawnBall(Math.random() * canvas.width, Math.random() * canvas.height / 3);
+            }
+
+            // Memulai loop animasi
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // Jalankan simulasi setelah halaman dimuat sepenuhnya
+        window.onload = init;
+    </script>
+</body>
+</html>
